@@ -70,6 +70,19 @@ app.get('/', (req, res) => {
     res.send('Hello World!');
 });
 
+app.post('/puppies', async (req, res) => {
+    try {
+        const { name, breed, age } = req.body;
+
+        const puppy = await User.create({ name, breed, age });
+        res.status(201).json(puppy);
+    } catch (err) {
+        console.error('Error creating puppy: ', err);
+        res.status(500).json({ error: 'Failed to create puppy' });
+    }
+});
+
+
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
