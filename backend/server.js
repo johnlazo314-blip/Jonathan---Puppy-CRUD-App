@@ -82,6 +82,16 @@ app.post('/puppies', async (req, res) => {
     }
 });
 
+app.get('/puppies', async (req, res) => {
+    try {
+        const puppies = await User.findAll();       
+        res.json(puppies);
+    } catch (err) {
+        console.error('Error fetching puppies: ', err);
+        res.status(500).json({ error: 'Failed to fetch puppies' });
+    }
+});
+
 
 const PORT = process.env.PORT || 5000;
 
