@@ -70,6 +70,68 @@ app.get('/', (req, res) => {
     res.send('Hello World!');
 });
 
+// Get all puppies
+app.get('/puppies', async (req, res) => {
+    try {
+        const puppies = await User.findAll();   
+        res.json(puppies);
+    } catch (err) {
+        console.error('Error fetching puppies: ', err);
+        res.status(500).json({ error: 'Failed to fetch puppies' });
+    }
+});
+
+// Get by ID
+app.get('/puppies/:id', async (req, res) => {
+    try {
+        const puppy = await User.findByPk(req.params.id);
+        if (puppy) {
+            res.json(puppy);
+        } else {
+            res.status(404).json({ error: 'Puppy not found' });
+        }
+    } catch (err) {
+        console.error('Error fetching puppy: ', err);
+        res.status(500).json({ error: 'Failed to fetch puppy' });
+    }
+});
+
+// Put update by ID
+app.put('/puppies/:id', async (req, res) => {
+    try { 
+        const { name, breed, age } = req.body;
+        const puppy = await User.findByPk(req.params.id);
+        if (puppy) {
+            puppy.name = name;
+            puppy.breed = breed;
+            puppy.age = age;
+            await puppy.save();
+            res.json(puppy);
+        } else {
+            res.status(404).json({ error: 'Puppy not found' });
+        }
+    } catch (err) {
+        console.error('Error updating puppy: ', err);
+        res.status(500).json({ error: 'Failed to update puppy' });
+    }
+});
+
+// Delete by ID
+app.delete('/puppies/:id', async (req, res) => {
+    try {
+        const puppy = await User.findByPk(req.params.id);
+        if (puppy) {
+            await puppy.destroy();
+            res.json({ message: 'Puppy deleted' });
+        } else {
+            res.status(404).json({ error: 'Puppy not found' });
+        }
+    } catch (err) {
+        console.error('Error deleting puppy: ', err);
+        res.status(500).json({ error: 'Failed to delete puppy' });
+    }
+});
+
 app.post('/puppies', async (req, res) => {
     try {
         const { name, breed, age } = req.body;
@@ -82,15 +144,7 @@ app.post('/puppies', async (req, res) => {
     }
 });
 
-app.get('/puppies', async (req, res) => {
-    try {
-        const puppies = await User.findAll();       
-        res.json(puppies);
-    } catch (err) {
-        console.error('Error fetching puppies: ', err);
-        res.status(500).json({ error: 'Failed to fetch puppies' });
-    }
-});
+
 
 
 const PORT = process.env.PORT || 5000;
