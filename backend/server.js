@@ -17,7 +17,7 @@ const payload = parts[1];
 const signature = parts[2];
 
 dotenv.config();
-const DB_SCHEMA = process.env.DB_SCHEMA || app; 
+const DB_SCHEMA = process.env.DB_SCHEMA || 'public';
 const useSsl = process.env.PGSSLMODE === 'require';
 const app = express(); 
 app.use(cors());
