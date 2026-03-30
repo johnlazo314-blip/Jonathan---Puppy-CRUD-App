@@ -3,6 +3,66 @@ import axios from 'axios'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 
+const ACCESS_TOKEN_STORAGE_KEYS = [
+  'access_token',
+  'asgardeo_access_token',
+  'token',
+  'tokenResponse',
+]
+
+const tryReadAccessToken = (value) => {
+  if (!value) {
+    return ''
+  }
+
+  if (typeof value === 'string' && value.split('.').length === 3) {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      return (
+        parsed?.access_token ||
+        parsed?.accessToken ||
+        parsed?.token?.access_token ||
+        parsed?.token?.accessToken ||
+        ''
+      )
+    } catch {
+      return ''
+    }
+  }
+
+  return ''
+}
+
+const getAccessTokenFromStorage = () => {
+  for (const key of ACCESS_TOKEN_STORAGE_KEYS) {
+    const token = tryReadAccessToken(window.localStorage.getItem(key))
+    if (token) {
+      return token
+    }
+  }
+
+  return ''
+}
+
+const apiClient = axios.create()
+
+apiClient.interceptors.request.use((config) => {
+  const token = getAccessTokenFromStorage()
+
+  if (token) {
+    config.headers = {
+      ...(config.headers || {}),
+      Authorization: `Bearer ${token}`,
+    }
+  }
+
+  return config
+})
+
 const emptyForm = {
   name: '',
   breed: '',
@@ -26,7 +86,7 @@ const Body = () => {
     setIsLoading(true)
     setError('')
     try {
-      const { data } = await axios.get(API_BASE_URL)
+      const { data } = await apiClient.get(API_BASE_URL)
       setUsers(Array.isArray(data) ? data : [])
     } catch {
       setError('Could not load data from the API.')
@@ -70,9 +130,9 @@ const Body = () => {
 
     try {
       if (editingId) {
-        await axios.put(`${API_BASE_URL}/${editingId}`, payload)
+        await apiClient.put(`${API_BASE_URL}/${editingId}`, payload)
       } else {
-        await axios.post(API_BASE_URL, payload)
+        await apiClient.post(API_BASE_URL, payload)
       }
 
       await fetchUsers()
@@ -95,7 +155,7 @@ const Body = () => {
   const deleteUser = async (id) => {
     setError('')
     try {
-      await axios.delete(`${API_BASE_URL}/${id}`)
+      await apiClient.delete(`${API_BASE_URL}/${id}`)
       await fetchUsers()
     } catch {
       setError('Could not delete this puppy. Please try again.')

@@ -1,27 +1,70 @@
 import express from 'express';
 import cors from 'cors';
-import bodyParser from 'body-parser';
 import { createServer } from 'http';
-import { Server } from 'socket.io';
 import { Sequelize, DataTypes } from 'sequelize';
 import dotenv from 'dotenv';
-import e from 'express';
-import { table, time } from 'console';
-
-const bearerToken = 'Bearer aaa.eyJzdWIiOiIxMjMifQ.bbb';
-const token = bearerToken.slice(7); // Remove 'Bearer ' prefix
-
-const parts = token.split('.'); // Split on '.'
-const header = parts[0];
-const payload = parts[1];
-const signature = parts[2];
+import * as jose from 'jose';
 
 dotenv.config();
 const DB_SCHEMA = process.env.DB_SCHEMA || 'public';
 const useSsl = process.env.PGSSLMODE === 'require';
 const app = express(); 
+
+// Asgardeo JWKS URL for JWT verification (must match the org in main.jsx baseUrl)
+const ASGARDEO_ORG = process.env.ASGARDEO_ORG || '';
+const ASGARDEO_AUDIENCE = process.env.ASGARDEO_AUDIENCE || '';
+const ASGARDEO_ISSUER = process.env.ASGARDEO_ISSUER || '';
+const JWKS_URI = `https://api.asgardeo.io/t/${ASGARDEO_ORG}/oauth2/jwks`;
+
+//Middleware
 app.use(cors());
 app.use(express.json());
+
+// JWT auth: verify Bearer token with Asgardeo JWKS, set req.userId from payload.sub
+async function authMiddleware(req, res, next) {
+    if (!ASGARDEO_ORG || !ASGARDEO_AUDIENCE || !ASGARDEO_ISSUER) {
+        return res.status(500).json({
+            error: 'Auth server configuration is incomplete.',
+            detail: 'Set ASGARDEO_ORG, ASGARDEO_AUDIENCE, and ASGARDEO_ISSUER in backend .env',
+        });
+    }
+
+  const authHeader = (req.headers.authorization || '').trim();
+
+  if (!authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({
+      error: 'Missing auth',
+      detail: 'Send Authorization: Bearer <access_token>',
+    });
+  }
+
+  const token = authHeader.slice(7).trim();
+  const looksLikeJwt = token && token.split('.').length === 3;
+
+  if (!looksLikeJwt) {
+    return res.status(401).json({
+      error: 'Access token is not a JWT. In Asgardeo, set your app to use JWT access tokens (Protocol tab).',
+    });
+  }
+
+  try {
+    const JWKS = jose.createRemoteJWKSet(new URL(JWKS_URI));
+        const { payload } = await jose.jwtVerify(token, JWKS, {
+            issuer: ASGARDEO_ISSUER,
+            audience: ASGARDEO_AUDIENCE,
+        });
+    req.userId = payload.sub; // Asgardeo's unique user id → used for row-level auth
+    return next();
+  } catch (err) {
+    console.error('JWT verification failed:', err.message);
+    return res.status(401).json({
+      error: 'Invalid or expired token',
+      detail: err.message,
+    });
+  }
+}
+
+
 const server = createServer(app);
 
 const sequelize = new Sequelize(process.env.DB_NAME, process.env.DB_USER,
@@ -71,7 +114,7 @@ app.get('/', (req, res) => {
 });
 
 // Get all puppies
-app.get('/puppies', async (req, res) => {
+app.get('/puppies', authMiddleware, async (req, res) => {
     try {
         const puppies = await User.findAll();   
         res.json(puppies);
@@ -82,7 +125,7 @@ app.get('/puppies', async (req, res) => {
 });
 
 // Get by ID
-app.get('/puppies/:id', async (req, res) => {
+app.get('/puppies/:id', authMiddleware, async (req, res) => {
     try {
         const puppy = await User.findByPk(req.params.id);
         if (puppy) {
@@ -97,7 +140,7 @@ app.get('/puppies/:id', async (req, res) => {
 });
 
 // Put update by ID
-app.put('/puppies/:id', async (req, res) => {
+app.put('/puppies/:id', authMiddleware, async (req, res) => {
     try { 
         const { name, breed, age } = req.body;
         const puppy = await User.findByPk(req.params.id);
@@ -117,7 +160,7 @@ app.put('/puppies/:id', async (req, res) => {
 });
 
 // Delete by ID
-app.delete('/puppies/:id', async (req, res) => {
+app.delete('/puppies/:id', authMiddleware, async (req, res) => {
     try {
         const puppy = await User.findByPk(req.params.id);
         if (puppy) {
@@ -132,7 +175,7 @@ app.delete('/puppies/:id', async (req, res) => {
     }
 });
 
-app.post('/puppies', async (req, res) => {
+app.post('/puppies', authMiddleware, async (req, res) => {
     try {
         const { name, breed, age } = req.body;
 
@@ -151,16 +194,6 @@ const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   try {
-    if(token) {
-        console.log('TOKEN HAS A VALUE\n',
-            `Bearer Token: ${bearerToken}\n`, 
-            `Token: ${token}\n`,
-            `Header: ${header}\n`,
-            `Payload: ${payload}\n`,
-            `Signature: ${signature}\n`);
-    } else {
-        console.log('No token provided');
-    }
     await sequelize.authenticate();
     console.log('Database connected...');
 
